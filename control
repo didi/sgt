@@ -1,0 +1,92 @@
+#!/bin/bash
+
+CWD=$(cd $(dirname $0)/; pwd)
+
+start()
+{
+	if [ $(ps aux|grep -v grep|grep '/usr/local/sgd/bin/sgd' -c) -gt 0 ]; then
+		echo "already started"
+		exit 0
+	fi
+	
+	DEV=${SGD_DEV:-0}
+	if [ "x$DEV" = "x1" ]; then
+		# in dev
+		$CWD/bin/sgd -s http://100.64.8.7:80 -d
+	else
+		# in prod
+		mkdir -p $CWD/log
+		nohup $CWD/bin/sgd -s http://100.64.8.7:80 &> $CWD/log/app.log &
+	fi
+}
+
+stop()
+{
+	DEV=${SGD_DEV:-0}
+	if [ "x$DEV" = "x1" ]; then
+		# in dev
+		ps aux|grep -v grep|grep '/usr/local/sgd/bin/sgd'|awk '{print $1}'|xargs kill && echo "sgd killed"
+		ps aux|grep -v grep|grep '/usr/local/sgd/bin/sga'|awk '{print $1}'|xargs kill && echo "sga killed"
+		if [ $(ps aux|grep -v grep|grep '/usr/local/sgd/bin/sg' -c) -ne 0 ]; then
+			echo "cannot stop sgd and sga"
+			exit 1
+		fi
+	else
+		# in prod
+		ps aux|grep -v grep|grep '/usr/local/sgd/bin/sgd'|awk '{print $1}'|xargs kill && echo "sgd killed"
+	fi
+}
+
+build()
+{
+	cd $CWD/sga && go build
+	cd $CWD/sgd && go build
+}
+
+pack()
+{
+	goos=$1
+	goarch=$2
+	ver=$3
+
+	rm -rf $CWD/build && mkdir -p $CWD/build/bin && cp $CWD/control $CWD/build
+
+	cd $CWD/sga && GOOS=$goos GOARCH=$goarch go build && cp sga $CWD/build/bin/sga
+	cd $CWD/sgd && GOOS=$goos GOARCH=$goarch go build && cp sgd $CWD/build/bin/sgd
+
+	cd $CWD/build && tar zcvf $CWD/sgd-${ver}_${goos}_${goarch}.tar.gz control bin
+}
+
+release()
+{
+	if [ ! -f uuid.url ]; then
+		echo "file uuid.url not found"
+		exit 1
+	fi
+
+	url=$(cat uuid.url | head -n 1)
+	sed -i "s|UUID_URL|$url|g" sgd/config/config.go
+
+	build
+	
+	v=$($CWD/sgd/sgd -v)
+	pack linux 386 $v
+	pack linux amd64 $v
+}
+
+case "$1" in
+	start)
+		start
+		;;
+	stop)
+		stop
+		;;
+	build)
+		build
+		;;
+	release)
+		release
+		;;
+	*)
+		echo $"Usage: $0 {start|stop|build|release}"
+esac
