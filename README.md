@@ -9,7 +9,7 @@
 虚机创建的时候会自动安装此进程，如需对存量虚机安装，可以执行：
 
 ```
-curl -s http://mirrors.intra.didiyun.com/didiyun_resource/sgd-v1.sh | sh
+curl -s http://mirrors.intra.didiyun.com/didiyun_resource/sgd-v1.sh | bash
 ```
 
 只能在滴滴云的虚机里运行这条指令，适用64位linux系统
